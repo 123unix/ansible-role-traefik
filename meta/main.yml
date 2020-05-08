@@ -33,4 +33,7 @@ galaxy_info:
     - container
     - proxy
 
-dependencies: []
+#dependencies: []
+dependencies:
+#- role: docker
+- role: nickjj.docker
