@@ -1,9 +1,12 @@
 # {{ ansible_managed }}
+
+exposedByDefault = false
+
 defaultEntryPoints = ["http"{% if traefik_https %}, "https"{% endif %}]
 {% if traefik_debug %}
 debug = true
 {% endif %}
-logLevel = "{{ traefik_loglevel }}"
+logLevel = "{{ traefik_log_level }}"
 {% if traefik_sendanonymoususage %}
 sendAnonymousUsage = {{ traefik_sendanonymoususage }}
 {% endif %}

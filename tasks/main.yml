@@ -1,5 +1,4 @@
 ---
-# tasks file for sbaerlocher.traefik
 
 - name: create traefik network
   become: true
@@ -11,38 +10,53 @@
         iprange: '{{ traefik_network_ipam.iprange }}'
   tags:
     - configuration
+    - never # docker_* are unavailable in Ansible 2.9
+- name: docker network
+  command: >
+    docker network create 
+    --subnet {{ traefik_network_ipam.subnet }}
+    --gateway {{ traefik_network_ipam.gateway }}
+    --ip-range {{ traefik_network_ipam.iprange }}
+    {{ traefik_network }}
+  failed_when: no
 
 - name: create traefik directory
   become: true
   file:
-    path: '{{ item }}'
+    path: '{{ traefik_dir }}'
     state: directory
     owner: root
     group: docker
     mode: 0550
-  with_items:
-    - /etc/traefik
   tags:
     - configuration
+
+- name: create empty acme.json
+  file:
+    path: '{{ traefik_dir }}/acme.json'
+    state: touch
+    owner: root
+    group: docker
+    mode: 0600
 
 - name: configuration traefik
   become: true
   template:
     src: "{{ traefik_configuration_template }}"
-    dest: "/etc/traefik/traefik.toml"
+    dest: "{{ traefik_dir }}/traefik.toml"
     owner: root
     group: docker
     mode: 0550
   notify:
-    - restart proxy_1
+    - restart traefik
   tags:
     - configuration
 
 - name: start traefik
   become: true
   docker_container:
-    name: proxy_1
-    image: traefik
+    name: traefik
+    image: traefik:alpine
     restart_policy: unless-stopped
     published_ports:
       - '80:80'
@@ -51,10 +65,11 @@
     #     CF_API_EMAIL: "{{ traefik_dnschallenge_env.CF_API_EMAIL }}"
     #     CF_API_KEY: "{{ traefik_dnschallenge_env.CF_API_KEY }}"
     volumes:
+      - /var/run/docker.sock:/var/run/docker.sock:ro
       - /etc/localtime:/etc/localtime:ro
-      - /etc/traefik/traefik.toml:/etc/traefik/traefik.toml
-      - /var/run/docker.sock:/var/run/docker.sock
-      - traefik-data:/etc/traefik
+      - "{{ traefik_dir }}/traefik.toml:/traefik.toml:ro"
+      - "{{ traefik_dir }}/acme.json:/acme.json"
+      #- traefik-data:/etc/traefik
     capabilities:
       - net_bind_service
     networks:
@@ -62,3 +77,15 @@
     networks_cli_compatible: false
   tags:
     - configuration
+    - never # docker_* are unavailable in Ansible 2.9
+- name: docker network
+  command: >
+    docker container run
+    --name traefik
+    --restart unless-stopped
+    -p '80:80','443:443'
+    -v /var/run/docker.sock:/var/run/docker.sock:ro,/etc/localtime:/etc/localtime:ro,{{ traefik_dir }}/traefik.toml:/traefik.toml:ro,{{ traefik_dir }}/acme.json:/acme.json
+    --cap-add net_bind_service
+    --network {{ traefik_network }}
+    traefik:alpine
+  failed_when: no
